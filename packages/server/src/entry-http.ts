@@ -1,5 +1,5 @@
 import {
-  createServerHostServices,
+  createLocalServices,
   createTopicResourcePeers,
   getAppConfigDir,
 } from "@zcode/services/node";
@@ -21,16 +21,17 @@ async function main(): Promise<void> {
   const authToken = process.env["ZCODE_SERVER_AUTH_TOKEN"]?.trim() || undefined;
   const topicResourcePeers = createTopicResourcePeers();
   const serverId = resolveHttpServerId();
-  const { services, workspaceIdentityMapper, migrationFailedPathCount } =
-    await createServerHostServices({
-      topicResourceRelayChannel: (request) => topicResourcePeers.getChannel(request),
-      sourceServerId: serverId,
-      zcodeBuiltinProviderConfigFilePath,
-      providerProvisioningTargetEnabled: Boolean(authToken),
-    });
+  // local 宿主形态：不传 projectStorageHostId / serviceAuthorityMode，任务与项目直接
+  // 归属 ownerHostId="local"，与桌面客户端共享同一套本地数据；此前 remote:server:<id>
+  // 的隔离身份由 createServerHostServices 构造，独立 server 不再走那条装配。
+  const services = createLocalServices({
+    topicResourceRelayChannel: (request) => topicResourcePeers.getChannel(request),
+    zcodeBuiltinProviderConfigFilePath,
+    providerProvisioningTargetEnabled: Boolean(authToken),
+  });
 
-  // 只有 IDE 插件会注入 workspace：用它修掉早期插件写入的、缺少 workspaceIdentity 的
-  // 远程任务行（否则点历史会话没有任何反应）。桌面端不设置该变量，行为不变。
+  // local 形态下本函数只对历史数据生效：修掉旧版本插件写入的、缺少 workspaceIdentity
+  // 的 remote:server:<id> 任务行；新写入的任务不再产生 remote 身份。
   const workspace = process.env["ZCODE_SERVER_WORKSPACE"]?.trim();
   if (workspace) {
     try {
@@ -45,9 +46,6 @@ async function main(): Promise<void> {
 
   createHttpServer(services, port, {
     serverId,
-    workspaceIdentityMapper,
-    migrationFailedPathCount,
-    virtualProjects: true,
     topicResourcePeers,
     ...(host ? { host } : {}),
     ...(staticRoot ? { staticRoot, spaFallback: true } : {}),

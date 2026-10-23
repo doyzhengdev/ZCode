@@ -7,17 +7,8 @@
  * UI 本身完全是官方 @zcode/ui 的 Root。
  */
 import { createRoot } from "react-dom/client";
-import {
-  AppErrorBoundary,
-  Root,
-  ZCodeIntlProvider,
-  bindRemoteWorkspacePath,
-  registerBaseWorkspaceServices,
-  registerRemoteWorkspaceSession,
-  useRemoteWorkspaceSessionStore,
-} from "@zcode/ui";
+import { AppErrorBoundary, Root, ZCodeIntlProvider } from "@zcode/ui";
 import { connectViaWebSocket } from "@zcode/client";
-import { buildServerRemoteWorkspaceIdentity } from "@zcode/shared";
 import { useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import { createIdePlatform } from "./idePlatform.js";
 import { installIdeBridge } from "./ideBridge.js";
@@ -48,13 +39,9 @@ async function readInitialWorkspace(): Promise<{
     };
     const workspace = info.workspaces?.[0];
     const path = workspace?.path ?? override;
-    // UI 用 workspaceIdentity 推导 hostId（分组/项目归属）。独立 server 的 host 是
-    // remote:server:<serverId>，不传 identity 会退回 "local" 并触发 host-identity-mismatch。
-    const identity =
-      workspace?.workspaceIdentity ??
-      (info.serverId && path
-        ? buildServerRemoteWorkspaceIdentity({ serverId: info.serverId, workspacePath: path })
-        : undefined);
+    // local 宿主形态下 UI 直连本地 server，与桌面客户端共用 "local" 身份，无需构造
+    // remote 身份；server-info 返回什么 workspaceIdentity 就用什么（通常为空）。
+    const identity = workspace?.workspaceIdentity ?? undefined;
     return { path, identity };
   } catch {
     return override ? { path: override } : {};
@@ -75,10 +62,9 @@ function normalizePath(value: string): string {
 }
 
 /**
- * 独立 server 模式下 UI 的“新建项目”会传 hostId=local，而 server 的 ownerHostId
- * 是 remote:server:<id>，两者不匹配会报 project.host-offline。这里绕开该入口：
- * 启动时若工作区还没有项目，直接用不带 hostId 的 saveProject 落库（服务端会自动补
- * 正确的 hostId），并把草稿绑定到该项目。
+ * 启动时确保工作区已有项目并把草稿绑定到它：local 形态下 UI 新建项目传的 hostId=local
+ * 与 server 的 ownerHostId 一致，可直接落库；仍用不带 hostId 的 saveProject 由服务端
+ * 自动补齐，路径以服务端规范化结果为准（Windows 下是反斜杠）。
  */
 async function bindWorkspaceProject(
   services: Awaited<ReturnType<typeof connectViaWebSocket>>,
@@ -133,26 +119,7 @@ async function bootstrap(): Promise<void> {
   // 先确定项目与规范化路径，再渲染 Root：会话 cwd 必须与 project.roots[0] 完全一致。
   const bootstrapProject = await bindWorkspaceProject(services, initialWorkspace.path);
   const workspacePath = bootstrapProject?.canonicalPath ?? initialWorkspace.path;
-  const workspaceIdentity = initialWorkspace.identity;
-  pushWorkspace = { path: workspacePath, identity: workspaceIdentity };
-
-  // 独立 server 的工作区从 UI 视角是 remote:server:<id>。官方流程由
-  // RemoteWorkspaceController 建立连接并注册 attachment；IDE 版直接连接同一个 server，
-  // 这里补一个等价 session，否则 rpcReady 恒为 false，所有会话都显示“设备未连接”。
-  if (workspacePath && workspaceIdentity) {
-    const sessionId = `ide-local:${workspaceIdentity}`;
-    registerBaseWorkspaceServices(services);
-    registerRemoteWorkspaceSession({
-      sessionId,
-      workspacePath,
-      workspaceIdentity,
-      services,
-    });
-    useRemoteWorkspaceSessionStore
-      .getState()
-      .bindWorkspaceIdentity(workspaceIdentity, sessionId);
-    bindRemoteWorkspacePath(workspacePath, sessionId);
-  }
+  pushWorkspace = { path: workspacePath };
 
   root.render(
     <AppErrorBoundary>
@@ -166,7 +133,6 @@ async function bootstrap(): Promise<void> {
           services={services}
           platform={platform}
           initialWorkspaceAbsPath={workspacePath}
-          initialWorkspaceIdentity={workspaceIdentity}
           supportsSettings
           allowOpenWorkspace
           preferDirectoryBrowser={false}
@@ -186,7 +152,8 @@ async function bootstrap(): Promise<void> {
       try {
         useZCodeSessionStore
           .getState()
-          .startDraft(boundPath, undefined, workspaceIdentity, { projectId });
+          // local 形态没有 workspaceIdentity，第三参保持位置传 undefined。
+          .startDraft(boundPath, undefined, undefined, { projectId });
         console.info("[web-ide] draft bound to project", projectId);
       } catch (error) {
         console.warn("[web-ide] bind draft failed", error);
