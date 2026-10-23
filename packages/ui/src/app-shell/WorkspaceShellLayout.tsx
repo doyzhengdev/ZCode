@@ -7,7 +7,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
-import { GripHorizontal, LoaderIcon } from "lucide-react";
+import { GripHorizontal, LoaderIcon, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { TID_APP_HEADER } from "@zcode/shared/test-ids";
 // 保活：workspace tab 真正关闭时，按 workspaceKey 回收 side pane terminal 的常驻 PTY/xterm。
 // 对称下侧 Terminal.tsx 的 openWorkspaceKeys 回收。
@@ -92,6 +92,7 @@ import { getGitDirtyFileCount } from "@/git-branch-switcher/display.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { getPathLeaf, toFileUrl } from "@/lib/path.js";
+import { isIdeHost } from "@/lib/ideHost.js";
 import { shouldOpenAssistantHtmlInBrowser } from "@/lib/assistantPreviewCards.js";
 import { setWorkspaceSidebarResizeActive } from "@/lib/workspaceSidebarResizeState.js";
 import { buildTaskWorkspaceKey } from "@/lib/taskQueryCache.js";
@@ -588,6 +589,7 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
     activeTaskTitle?.trim() || intl.formatMessage({ id: "taskList.untitled" });
   // 完整视图保留左侧任务列表与左上角按钮组，侧栏显隐只由用户开关决定。
   const isSidebarPanelVisible = isSidebarVisible;
+  const ideHost = isIdeHost();
   const {
     panelRef: terminalPanelRef,
     panelElementRef: terminalPanelElementRef,
@@ -2075,6 +2077,7 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
                 onToggleTerminal={handleToggleTerminal}
                 onToggleBrowser={handleToggleBrowser}
                 onToggleSidePane={handleToggleSidePane}
+                onToggleSidebar={handleToggleSidebar}
                 toggleSidePaneShortcutLabel={toggleSidePaneShortcutLabel}
                 onReloadSession={handleReloadSession}
                 reloadSessionDisabled={workspaceSessionActionDisabled}
@@ -2310,6 +2313,25 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
           </aside>
         </div>
 
+        {/* IDE 宿主：侧栏右缘中点的固定折叠把手；收起后仍停在左边缘，能再展开。 */}
+        {ideHost ? (
+          <button
+            type="button"
+            data-testid="ide-sidebar-toggle"
+            aria-label={intl.formatMessage({ id: "workspaceSidebar.toggleSidebar" })}
+            aria-pressed={isSidebarVisible}
+            onClick={handleToggleSidebar}
+            style={{ left: "max(0px, calc(var(--workspace-sidebar-panel-width) - 11px))" }}
+            className="absolute top-1/2 z-30 flex h-12 w-[22px] -translate-y-1/2 items-center justify-center rounded-md border border-border bg-card text-foreground-subtle shadow-md transition-colors hover:bg-surface-hover hover:text-foreground [app-region:no-drag]"
+          >
+            {isSidebarVisible ? (
+              <PanelLeftClose className="size-3.5" aria-hidden="true" />
+            ) : (
+              <PanelLeftOpen className="size-3.5" aria-hidden="true" />
+            )}
+          </button>
+        ) : null}
+
         {isSidebarPanelVisible && renderWebRemoteNavigationPanel ? (
           <div
             role="separator"
@@ -2482,6 +2504,7 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
                             onToggleTerminal={handleToggleTerminal}
                             onToggleBrowser={handleToggleBrowser}
                             onToggleSidePane={handleToggleSidePane}
+                            onToggleSidebar={handleToggleSidebar}
                             toggleSidePaneShortcutLabel={toggleSidePaneShortcutLabel}
                             onReloadSession={handleReloadSession}
                             reloadSessionDisabled={workspaceSessionActionDisabled}

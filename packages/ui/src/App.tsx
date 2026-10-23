@@ -20,7 +20,14 @@ import { isWorkspaceReadOnly, isWorkspaceTab } from "@/store/tabStore.js";
 import type { TaskChatMessage as TestChatMessage } from "@/lib/taskChatMessageTypes.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
-import { getPathLeaf } from "@/lib/path.js";
+import {
+  decodeFilePathUriEscapes,
+  getPathLeaf,
+  isAbsoluteFilePath,
+  joinFilePath,
+} from "@/lib/path.js";
+import { isIdeHost } from "@/lib/ideHost.js";
+import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import {
   addPluginStoreOpenListener,
   type PluginStoreOpenTarget,
@@ -93,6 +100,51 @@ const EMPTY_REMOTE_WORKSPACE_RECOVERY_BY_WORKSPACE_KEY: NonNullable<
 > = {};
 const EMPTY_REMOTE_CONNECTION_LOGS: NonNullable<AppProps["remoteConnectionLogs"]> = [];
 
+/**
+ * 消息里的文件链接常是 `./a/b` 或含 `..` 的相对路径；直接拼给 IDE 会因
+ * `.`/`..` 段解析失败而静默打不开。这里按段归一化（根之上的 `..` 保留原样，
+ * 让打开端报“找不到”而不是指错文件）。
+ */
+function normalizeIdeFilePath(path: string): string {
+  const separator = path.includes("\\") && !path.includes("/") ? "\\" : "/";
+  const segments: string[] = [];
+  for (const segment of path.split(/[\\/]+/)) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") {
+      if (segments.length > 0 && segments[segments.length - 1] !== "..") {
+        segments.pop();
+      } else {
+        segments.push(segment);
+      }
+      continue;
+    }
+    segments.push(segment);
+  }
+  return segments.join(separator);
+}
+
+/**
+ * IDE 宿主：把预览打开请求转成「在 IDE 编辑器中打开」。
+ * 只有能解析出本地绝对路径的来源才拦截（纯文本/匿名 diff 继续走内置预览）。
+ * 返回 true 表示已交给 IDE，不再弹内置 Code Viewer。
+ */
+function openCodeViewerSourceInIdeEditor(
+  source: CodeViewerSource,
+  fallbackWorkspacePath: string,
+  platform: { openExternalFile?: (path: string) => void | Promise<unknown> },
+): boolean {
+  const path = "path" in source ? source.path : undefined;
+  if (!path) return false;
+  const decoded = decodeFilePathUriEscapes(path);
+  const joined = isAbsoluteFilePath(decoded)
+    ? decoded
+    : joinFilePath(source.workspacePath?.trim() || fallbackWorkspacePath, decoded);
+  const absolute = normalizeIdeFilePath(joined);
+  if (!isAbsoluteFilePath(absolute)) return false;
+  void platform.openExternalFile?.(absolute);
+  return true;
+}
+
 export function App({
   services,
   baseFeedbackService,
@@ -146,6 +198,7 @@ export function App({
   const { intl, locale, setLocale } = useZCodeIntl();
   const isOfficeMode = useIsOfficeMode();
   const platform = usePlatform();
+  const ideHost = isIdeHost();
   // 进程内存本地诊断日志：每窗口一个 60s 采样器，
   // 经门控后写桌面主日志；Web 端无日志桥时为 no-op。同一次读数还经 preload 桥把 heap 送 main 的
   // renderer_main 资源事件，无桥时同样 no-op。
@@ -614,12 +667,13 @@ export function App({
     }
   }, [handleToggleGit, workspaceReadOnlyReason]);
   const handleOpenCodeViewerIfWritable = useCallback(
-    (...args: Parameters<typeof handleOpenCodeViewer>) => {
-      if (!workspaceReadOnlyReason) {
-        handleOpenCodeViewer(...args);
-      }
+    (source: CodeViewerSource) => {
+      if (workspaceReadOnlyReason) return;
+      // IDE 宿主里点击会话文件直接用 IDE 编辑器打开，不再弹内置预览面板。
+      if (ideHost && openCodeViewerSourceInIdeEditor(source, workspaceAbsPath, platform)) return;
+      handleOpenCodeViewer(source);
     },
-    [handleOpenCodeViewer, workspaceReadOnlyReason],
+    [handleOpenCodeViewer, ideHost, platform, workspaceAbsPath, workspaceReadOnlyReason],
   );
   const handleAutoOpenAssistantPptx = useCallback(
     (request: AssistantPreviewCardsAutoOpenRequest) => {

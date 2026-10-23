@@ -72,8 +72,11 @@ export interface WorkspaceHeaderActionSectionProps {
   isDesktop?: boolean;
   isTerminalOpen: boolean;
   isSidePaneOpen: boolean;
+  isSidebarVisible?: boolean;
   onToggleTerminal: () => void;
   onToggleSidePane: () => void;
+  onToggleSidebar?: () => void;
+  onCreateTask?: () => void;
   toggleSidePaneShortcutLabel?: string;
   onSelectedEditorChange?: (editor: EditorInfo | null) => void;
   simplifyForNarrowRemote?: boolean;

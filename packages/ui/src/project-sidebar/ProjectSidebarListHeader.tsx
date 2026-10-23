@@ -19,11 +19,14 @@ export function ProjectSidebarListHeader({
   view,
   onViewChange,
   groupedActionsRef,
+  hideActions = false,
 }: {
   onOpenCommandCenter: ProjectSidebarProps["onOpenCommandCenter"];
   view: ProjectSidebarView;
   onViewChange(view: ProjectSidebarView): void;
   groupedActionsRef?: Ref<HTMLDivElement>;
+  /** IDE 内嵌形态只有一条最近对话列表，搜索与视图切换按钮没有意义。 */
+  hideActions?: boolean;
 }) {
   const { intl } = useZCodeIntl();
   return (
@@ -39,8 +42,10 @@ export function ProjectSidebarListHeader({
       </span>
       <div
         ref={groupedActionsRef}
-        className={view === "grouped" ? "flex items-center gap-1" : "hidden"}
+        className={view === "grouped" && !hideActions ? "flex items-center gap-1" : "hidden"}
       />
+      {hideActions ? null : (
+        <>
       <ControlHintTooltip
         // 原因：快捷键拼入标题会继承标题样式；用独立 shortcut 复用标准键帽。
         title={intl.formatMessage({ id: "commandCenter.open" })}
@@ -94,6 +99,8 @@ export function ProjectSidebarListHeader({
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+        </>
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { remoteHostIdFromWorkspaceIdentity } from "@/project-sidebar/contract.js
 import type {
   ProjectSidebarProps,
   VirtualProject,
+  ProjectTask,
   Locale,
   Theme,
   RemoteProjectHost,
@@ -30,10 +31,12 @@ import { useProjectFileTree } from "@/project-sidebar/useProjectFileTree.js";
 import {
   selectProjectRows,
   selectSortedProjects,
+  compareProjectTaskRows,
   projectKey,
   projectHasUnread,
   projectSourceServerId,
 } from "@/project-sidebar/view.js";
+import { isIdeHost } from "@/lib/ideHost.js";
 import { TaskGroupedView } from "@/project-sidebar/TaskGroupedView.js";
 import { taskGroupKey } from "@/project-sidebar/grouped-view.js";
 import { ProjectTaskRows } from "@/project-sidebar/ProjectTaskRows.js";
@@ -63,7 +66,11 @@ export type {
 } from "@/project-sidebar/contract.js";
 
 // 右侧面板显隐曾让所有项目的菜单和 Tooltip 重渲染；只隔离无关父更新，保留目录/context 订阅。
+const normalizeProjectPath = (value: string) =>
+  value.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+
 export const ProjectSidebar = memo(function ProjectSidebar(props: ProjectSidebarProps) {
+  const ideHost = isIdeHost();
   const {
     tree: authoritativeTree,
     directory,
@@ -147,13 +154,38 @@ export const ProjectSidebar = memo(function ProjectSidebar(props: ProjectSidebar
               .getWorkspaceState(props.workspacePath, props.workspaceIdentity).draftTaskGroupId ??
             null)
           : null;
+    // projectId 只在确实有归属时才带上：Root 用 `"projectId" in request` 区分
+    // “显式项目”和“跟随当前工作区”。传 null 会被当成显式目标，跳过从活动工作区
+    // 继承 hostId 的分支，远程工作区因此退化成 path-only（模型偏好等按 local 桶读取）。
     props.onCreateTask({
-      projectId: projectId ?? null,
+      ...(projectId ? { projectId } : {}),
       taskGroupId: taskGroupId === undefined ? inheritedGroup : taskGroupId,
       ...(hostId ? { hostId } : {}),
     });
   };
   const projects = preferences.sort(selectSortedProjects(tree));
+  // IDE 内嵌形态只保留当前工作区所属项目的对话：项目区、其它项目的入口和
+  // 未归属任何项目的散会话都不进侧栏，列表固定按最近活动排序。
+  const ideProject = useMemo(() => {
+    if (!ideHost) return null;
+    const target = normalizeProjectPath(props.workspacePath);
+    return (
+      (projects as VirtualProject[]).find((project) =>
+        project.roots.some(
+          (root: { rootPath: string }) => normalizeProjectPath(root.rootPath) === target,
+        ),
+      ) ?? null
+    );
+  }, [ideHost, projects, props.workspacePath]);
+  const ideTasks = useMemo(
+    () =>
+      ideProject
+        ? (tree.tasks as ProjectTask[])
+            .filter((task) => task.projectId === ideProject.id && !task.archived)
+            .sort((left, right) => compareProjectTaskRows(left, right, "timeline"))
+        : [],
+    [ideProject, tree.tasks],
+  );
   const expandableProjects = projects.filter(
     (project) => availability.get(projectKey(project))?.online !== false,
   );
@@ -218,8 +250,13 @@ export const ProjectSidebar = memo(function ProjectSidebar(props: ProjectSidebar
     <ProjectTaskListContext.Provider value={taskPresentation}>
       <SidebarTooltipProvider>
         <aside data-testid={TID_SIDEBAR} className="flex h-full min-h-0 flex-col overflow-hidden">
+          {/* IDE 宿主没有顶部浮层，不需要为它留出 48px 的拖拽条。 */}
           <div
-            className={`h-12 shrink-0 [app-region:drag] ${props.isWebRemoteControl ? "max-md:hidden" : ""}`}
+            className={
+              ideHost
+                ? "h-2 shrink-0"
+                : `h-12 shrink-0 [app-region:drag] ${props.isWebRemoteControl ? "max-md:hidden" : ""}`
+            }
           />
           {/* 内联改名聚焦曾把 hidden 容器横向滚动，导致手机整栏左移；滑动面板只裁切，不允许焦点滚动。 */}
           <div className="relative min-h-0 flex-1 overflow-clip">
@@ -228,7 +265,7 @@ export const ProjectSidebar = memo(function ProjectSidebar(props: ProjectSidebar
               className="absolute inset-0 flex min-h-0 flex-col"
             >
               {/* 原因：顶层新建显式传 null 会抹掉当前项目；省略归属，让 Root 与快捷键共用继承路径。 */}
-              <ProjectSidebarNavigation props={props} onCreate={() => props.onCreateTask()} />
+              <ProjectSidebarNavigation props={props} onCreate={() => action(() => start())} />
               <div
                 data-testid="sidebar-task-list-region"
                 className="flex min-h-0 flex-1 flex-col border-t border-border/50 pt-3 [anchor-name:--sidebar-task-list-divider]"
@@ -238,6 +275,7 @@ export const ProjectSidebar = memo(function ProjectSidebar(props: ProjectSidebar
                   view={view}
                   onViewChange={setView}
                   groupedActionsRef={setGroupedToolbar}
+                  hideActions={ideHost}
                 />
                 {/* 原因：仅设 overflow-y:auto 会让拖拽位移打开水平滚动；列表始终只允许纵向滚动。 */}
                 {/* 原因：项目侧栏迁移后普通滚动容器遗漏边缘渐隐；复用统一 mask，随实际滚动边界更新。 */}
@@ -245,7 +283,15 @@ export const ProjectSidebar = memo(function ProjectSidebar(props: ProjectSidebar
                   <div ref={setGroupedSticky} />
                   <ScrollFadeViewport ref={scrollRef} className="overflow-x-hidden">
                     <div className="flex flex-col gap-3 pb-3">
-                      {homeOnlySwitcher ? (
+                      {ideHost ? (
+                        <ProjectTaskRows
+                          key="ide-recent"
+                          kind="timeline"
+                          tasks={ideTasks}
+                          onSelect={onSelectTask}
+                          refresh={refresh}
+                        />
+                      ) : homeOnlySwitcher ? (
                         <HomeOnlyWorkspaceRows switcher={homeOnlySwitcher} />
                       ) : view === "projects" ? (
                         <>

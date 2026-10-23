@@ -1,3 +1,4 @@
+import { MessageCirclePlus } from "lucide-react";
 import { WorkspaceEditorButtonGroup } from "@/WorkspaceEditorButtonGroup.js";
 import { WorkspaceSidePaneToggleButton } from "@/WorkspaceSidePaneToggleButton.js";
 import { WorkspaceTerminalToggleButton } from "@/WorkspaceTerminalToggleButton.js";
@@ -6,6 +7,10 @@ import type { WorkspaceHeaderActionSectionProps } from "@/WorkspaceHeaderSection
 import { WorkspaceHelpMenuButton } from "@/WorkspaceHelpMenuButton.js";
 import { ConversationShareMenu } from "@/ConversationShareMenu.js";
 import { DesktopWindowControls } from "@/DesktopWindowControls.js";
+import { Button } from "@/components/ui/button.js";
+import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { isIdeHost } from "@/lib/ideHost.js";
 
 export type { WorkspaceHeaderActionSectionProps } from "@/WorkspaceHeaderSections/shared.js";
 
@@ -21,8 +26,11 @@ export function WorkspaceHeaderActionSection({
   isDesktop,
   isTerminalOpen,
   isSidePaneOpen,
+  isSidebarVisible = true,
   onToggleTerminal,
   onToggleSidePane,
+  onToggleSidebar,
+  onCreateTask,
   toggleSidePaneShortcutLabel,
   onSelectedEditorChange,
   simplifyForNarrowRemote = false,
@@ -30,6 +38,10 @@ export function WorkspaceHeaderActionSection({
   showWindowControls = false,
   useWindowsCaptionSpacing = false,
 }: WorkspaceHeaderActionSectionProps) {
+  // IDE 宿主没有桌面端的顶部浮层：帮助、终端、右侧面板都是桌面产品入口，
+  // 在工具窗口里既用不上又挤占标题区，统一隐藏；右上角只留一个新建对话。
+  const ideHost = isIdeHost();
+  const { intl } = useZCodeIntl();
   return (
     <div
       className={cn(
@@ -59,27 +71,52 @@ export function WorkspaceHeaderActionSection({
           useWindowsCaptionSpacing={useWindowsCaptionSpacing}
         />
       ) : null}
-      {!simplifyForNarrowRemote ? (
+      {ideHost ? (
+        <ControlHintTooltip
+          title={intl.formatMessage({ id: "taskList.newThread" })}
+          side="bottom"
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-md"
+            data-testid="ide-header-new-task"
+            className="text-foreground hover:bg-hover hover:text-foreground [app-region:no-drag]"
+            aria-label={intl.formatMessage({ id: "taskList.newThread" })}
+            onClick={() => {
+              // 侧栏收起时先展开：新对话落在左侧最近列表里，用户要能看到它。
+              if (!isSidebarVisible) onToggleSidebar?.();
+              onCreateTask?.();
+            }}
+          >
+            <MessageCirclePlus className="size-4" />
+          </Button>
+        </ControlHintTooltip>
+      ) : (
         <>
-          {!hideHelpMenu ? <WorkspaceHelpMenuButton isDesktop={Boolean(isDesktop)} /> : null}
-          {/* Bugfix: 远程控制移动端头部空间过窄，终端入口在这里会和核心操作争抢宽度。 */}
-          <WorkspaceTerminalToggleButton
-            isTerminalOpen={isTerminalOpen}
-            onToggleTerminal={onToggleTerminal}
-            disabledReason={readOnlyReason}
-            useWindowsCaptionSpacing={useWindowsCaptionSpacing}
-          />
+          {!simplifyForNarrowRemote ? (
+            <>
+              {!hideHelpMenu ? <WorkspaceHelpMenuButton isDesktop={Boolean(isDesktop)} /> : null}
+              {/* Bugfix: 远程控制移动端头部空间过窄，终端入口在这里会和核心操作争抢宽度。 */}
+              <WorkspaceTerminalToggleButton
+                isTerminalOpen={isTerminalOpen}
+                onToggleTerminal={onToggleTerminal}
+                disabledReason={readOnlyReason}
+                useWindowsCaptionSpacing={useWindowsCaptionSpacing}
+              />
+            </>
+          ) : null}
+          {/* 远程控制移动端只保留图标，避免 diff 数字把按钮撑宽导致标题拥挤。 */}
+          {!isSidePaneOpen ? (
+            <WorkspaceSidePaneToggleButton
+              isSidePaneOpen={isSidePaneOpen}
+              onToggleSidePane={onToggleSidePane}
+              shortcutLabel={toggleSidePaneShortcutLabel}
+              useWindowsCaptionSpacing={useWindowsCaptionSpacing}
+            />
+          ) : null}
         </>
-      ) : null}
-      {/* 远程控制移动端只保留图标，避免 diff 数字把按钮撑宽导致标题拥挤。 */}
-      {!isSidePaneOpen ? (
-        <WorkspaceSidePaneToggleButton
-          isSidePaneOpen={isSidePaneOpen}
-          onToggleSidePane={onToggleSidePane}
-          shortcutLabel={toggleSidePaneShortcutLabel}
-          useWindowsCaptionSpacing={useWindowsCaptionSpacing}
-        />
-      ) : null}
+      )}
       {showWindowControls && !isSidePaneOpen ? <DesktopWindowControls /> : null}
     </div>
   );

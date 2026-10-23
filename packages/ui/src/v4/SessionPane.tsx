@@ -5430,7 +5430,9 @@ export function SessionPane({
       }
       blockingRequestId={blockingInteractionId}
       listenAddToChatEvents={focused}
-      externalTextInsertRequest={focused && sessionId === null ? composerTextInsertRequest : null}
+      // IDE 右键菜单发送的文件引用也要能进活动会话的输入框，不再只限新建任务草稿；
+      // 桌面端的既有调用（推荐提示词）只会在草稿态触发，放开 sessionId 判断不影响它们。
+      externalTextInsertRequest={focused ? composerTextInsertRequest : null}
       onExternalTextInsertApplied={handleExternalTextInsertApplied}
       autoFocusEnabled={focused}
       disabled={

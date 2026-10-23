@@ -57,6 +57,16 @@ export interface NewTaskTargetResolution {
 }
 
 /**
+ * 路径比较只用于判断“是不是同一个工作区”。
+ * Windows 上 prepareSession 与活动 tab 可能一边用反斜杠、一边用正斜杠，直接 === 会漏判。
+ */
+function sameWorkspacePath(left: string, right: string): boolean {
+  const normalize = (value: string) =>
+    value.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return normalize(left) === normalize(right);
+}
+
+/**
  * 解析新任务落点：请求显式带 targetWorkspace 时（跨项目发起已保存工作流）直接采用它，不再询问 workbench 焦点；
  * 否则惰性回退到 resolveWorkbenchNewTaskTarget。identity 缺省归一化为 null。
  */
@@ -367,7 +377,20 @@ export function useRootWorkspaceActions({
             : {}),
         });
         if (!isCurrent()) return;
-        if (hostId && hostId !== "local") {
+        // 同一窗口、同一路径已经有远端身份时，prepareSession 只回路径会让新草稿降级成
+        // path-only：composer scope 落到 local 桶，最近模型/草稿等全部读不到（“新增对话
+        // 还是默认模型”）。直连场景里该身份本就属于当前附件，直接沿用即可。
+        const targetIdentity =
+          target.workspaceIdentity ??
+          (activeWorkspacePath && sameWorkspacePath(activeWorkspacePath, target.workspacePath)
+            ? (activeWorkspaceIdentity?.trim() || undefined)
+            : undefined);
+        // 已经挂在同一个远端附件上：hostId 只是从附件身份推导出来的，不需要再做远程导航。
+        // IDE 插件没有 openRemoteProjectWorkspace，这里漏判会直接抛
+        // project.remote-navigation-unavailable，表现为“点新建没有任何反应”。
+        const alreadyAttached =
+          Boolean(targetIdentity) && targetIdentity === activeWorkspaceIdentity?.trim();
+        if (hostId && hostId !== "local" && !alreadyAttached) {
           if (!target.workspaceIdentity || !openRemoteProjectWorkspace)
             throw new Error("project.remote-navigation-unavailable");
           await openRemoteProjectWorkspace({
@@ -380,12 +403,12 @@ export function useRootWorkspaceActions({
           });
         }
         // 目录准备成功才提交导航；失败保留当前会话和分屏。
-        if (!hostId || hostId === "local")
+        if (!hostId || hostId === "local" || alreadyAttached)
           addTab(target.workspacePath, {
             workspacePurpose: target.projectId ? "project" : "conversation",
-            ...(target.workspaceIdentity ? { workspaceIdentity: target.workspaceIdentity } : {}),
+            ...(targetIdentity ? { workspaceIdentity: targetIdentity } : {}),
           });
-        startDraftInWorkspace(target.workspacePath, target.workspaceIdentity, {
+        startDraftInWorkspace(target.workspacePath, targetIdentity, {
           ...(typeof request === "string" ? { provider: request } : request),
           ...(pendingDraft ? { draftId: pendingDraft.draftId } : {}),
           projectId: target.projectId,

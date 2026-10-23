@@ -85,6 +85,8 @@ export function WorkspaceHeader({
   onRefreshGit,
   onToggleTerminal,
   onToggleSidePane,
+  onToggleSidebar,
+  onCreateTask,
   toggleSidePaneShortcutLabel,
   onReloadSession,
   reloadSessionDisabled,
@@ -134,6 +136,8 @@ export function WorkspaceHeader({
   onToggleTerminal: () => void;
   onToggleBrowser: () => void;
   onToggleSidePane: () => void;
+  /** IDE 宿主里右上角新建按钮用它展开被收起的侧栏。 */
+  onToggleSidebar?: () => void;
   toggleSidePaneShortcutLabel?: string;
   onReloadSession: (options?: {
     resumeTaskId?: string | null;
@@ -237,8 +241,11 @@ export function WorkspaceHeader({
           isDesktop={isDesktop}
           isTerminalOpen={isTerminalOpen}
           isSidePaneOpen={isSidePaneOpen}
+          isSidebarVisible={isSidebarVisible}
           onToggleTerminal={onToggleTerminal}
           onToggleSidePane={onToggleSidePane}
+          onToggleSidebar={onToggleSidebar}
+          onCreateTask={onCreateTask}
           toggleSidePaneShortcutLabel={toggleSidePaneShortcutLabel}
           simplifyForNarrowRemote={simplifyForNarrowRemote}
           hideHelpMenu={false}
