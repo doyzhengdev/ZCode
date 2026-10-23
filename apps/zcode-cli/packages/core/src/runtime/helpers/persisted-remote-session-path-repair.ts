@@ -26,6 +26,11 @@ function resolvePathField(
   workspaceIdentity: string,
 ): PathFieldResolution {
   if (value === workspacePath) return "clean";
+  // 旧版本把 Windows 盘符路径以 identity 归一形态（带前导斜杠的 "/E:/x"）落库；
+  // parse 还原后与库里残留形态精确相等，属于可证明的污染，允许修复。
+  if (!workspacePath.startsWith("/") && value === `/${workspacePath}`) {
+    return "repair";
+  }
   if (
     value === workspaceIdentity ||
     value === buildKnownPollutedPath(workspacePath, workspaceIdentity)

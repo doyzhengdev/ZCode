@@ -8,6 +8,10 @@
 // path 段经 normalizeWorkspacePathForIdentity 归一（分隔符 → "/"，去收尾斜杠，
 // 空 → "/"），因此恒以 "/" 开头；authority 各段不含 "/"（host 小写、port 数字、
 // docker 容器名/wsl 发行版名的合法字符集均不含 ":" 与 "/"）。
+// Windows 盘符路径（E:\x）同样被归一成 "/E:/x" 进入 identity——前导斜杠只是身份键
+// 的存储形态，不代表真实文件系统路径；解析侧负责还原为 "E:/x"，保证消费方拿到的
+// workspacePath 可直接用作 cwd/目录。构造侧 normalize 会重新补上斜杠，因此
+// build(parse(identity)) === identity 恒成立，存量身份键不漂移。
 // 消费方：CLI v4 createSession 的 workspaceId（远程 pane 里 workspaceKey =
 // identity）需要还原出真实 workspacePath 作为会话 workingDirectory。
 import type { RemoteTarget } from "./remoteTarget.js";
@@ -18,7 +22,7 @@ export interface ParsedRemoteWorkspaceIdentity {
   kind: RemoteWorkspaceIdentityKind;
   /** kind=server 时的稳定 Source Server id。 */
   sourceServerId?: string;
-  /** 远端真实路径（posix 归一形态）。 */
+  /** 远端真实路径；Windows 盘符形态已还原（E:/x），POSIX 形态保持 "/" 开头。 */
   workspacePath: string;
 }
 
@@ -40,6 +44,16 @@ function normalizeWorkspacePathForIdentity(workspacePath: string): string {
   const normalized = workspacePath.replace(/\\/g, "/").replace(/\/+/g, "/");
   const trimmed = normalized.replace(/^\/+|\/+$/g, "");
   return `/${trimmed}`;
+}
+
+/**
+ * Windows 盘符路径在 identity 里以 "/E:/x" 形态存放；解析时还原为 "E:/x"，否则在
+ * Windows 上会被当作"有根无盘符"路径拼到当前盘符下（E:\E:\x）。POSIX 远端路径不受
+ * 影响。远端理论上可能存在名为 "c:" 的目录，该形态优先按 Windows 盘符解释——与
+ * "远端为 Windows 机器"的实际部署场景对齐。
+ */
+function restoreWindowsDrivePathFromIdentity(workspacePath: string): string {
+  return /^\/[A-Za-z]:(\/|$)/.test(workspacePath) ? workspacePath.slice(1) : workspacePath;
 }
 
 function resolveServerIdentityId(target: Extract<RemoteTarget, { kind: "server" }>): string {
@@ -147,11 +161,15 @@ export function parseRemoteWorkspaceIdentity(
     }
     cursor = userEnd + 1;
   }
-  const workspacePath = rest.slice(cursor);
-  if (!workspacePath.startsWith("/")) {
+  const rawWorkspacePath = rest.slice(cursor);
+  if (!rawWorkspacePath.startsWith("/")) {
     return null;
   }
-  return { kind, workspacePath, ...(sourceServerId ? { sourceServerId } : {}) };
+  return {
+    kind,
+    workspacePath: restoreWindowsDrivePathFromIdentity(rawWorkspacePath),
+    ...(sourceServerId ? { sourceServerId } : {}),
+  };
 }
 
 /** identity 是否是远程 workspace identity（可被 parseRemoteWorkspaceIdentity 解析）。 */
@@ -162,7 +180,13 @@ export function isRemoteWorkspaceIdentity(identity: string): boolean {
 /** 虚拟项目的 host 身份；只在统一 identity 模块裁剪路径，业务层不得自行拆 authority。 */
 export function remoteHostIdFromWorkspaceIdentity(identity: string): string | null {
   const parsed = parseRemoteWorkspaceIdentity(identity);
-  return parsed ? identity.slice(0, -(parsed.workspacePath.length + 1)) : null;
+  if (!parsed) return null;
+  // Windows 盘符路径解析后被剥掉前导斜杠；裁剪 authority 必须按 identity 里的实际
+  // 尾段长度（含斜杠）计算，否则 hostId 会被多切一个字符。
+  const tail = parsed.workspacePath.startsWith("/")
+    ? parsed.workspacePath
+    : `/${parsed.workspacePath}`;
+  return identity.slice(0, -(tail.length + 1));
 }
 
 /** 从已登记的 Host 身份构造目录身份；不让业务模块拼接或解析 authority。 */

@@ -113,6 +113,30 @@ describe("repairPersistedRemoteSessionPaths", () => {
     expect(updateSession).not.toHaveBeenCalled();
   });
 
+  it("repairs the legacy leading-slash form for Windows server sessions", async () => {
+    const identity = "remote:server:zdy-pc:/E:/gitee/ezllm";
+    const session = createSession({
+      workspaceID: identity as WorkspaceId,
+      directory: "/E:/gitee/ezllm",
+      path: "/E:/gitee/ezllm",
+    });
+    const { store, repairRemoteSessionPaths, updateSession } = createUpdater(session);
+
+    const repaired = await repairPersistedRemoteSessionPaths(store, session);
+
+    expect(repairRemoteSessionPaths).toHaveBeenCalledWith({
+      sessionID: session.id,
+      workspaceID: session.workspaceID,
+      expectedDirectory: "/E:/gitee/ezllm",
+      expectedPath: "/E:/gitee/ezllm",
+      directory: "E:/gitee/ezllm",
+      path: "E:/gitee/ezllm",
+      timeUpdated: session.time.updated,
+    });
+    expect(updateSession).not.toHaveBeenCalled();
+    expect(repaired).toMatchObject({ directory: "E:/gitee/ezllm", path: "E:/gitee/ezllm" });
+  });
+
   it("continues with the in-memory repair when persistence fails", async () => {
     const identity = "remote:wsl:Debian:dev:/home/dev/project";
     const polluted = `/home/dev/project/${identity}`;
