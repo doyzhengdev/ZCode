@@ -35,6 +35,24 @@ export function prepareComposerRecentReceipt(
     order: lastReceiptOrder,
   };
 }
+function writeRecent(
+  storage: StorageLike,
+  key: string,
+  value: string,
+  order: number,
+): boolean {
+  let previous: { order?: number } | null = null;
+  try {
+    previous = JSON.parse(storage.getItem(key) ?? "null");
+  } catch {
+    /* 损坏偏好可被真实接纳替换。 */
+  }
+  // 回执/查询/快照可能重复到达；持久化顺序让刷新后的旧回执也不能回滚默认配置。
+  if (typeof previous?.order === "number" && previous.order >= order) return true;
+  storage.setItem(key, value);
+  return true;
+}
+
 export function acceptComposerRecentReceipt(
   receipt: ComposerRecentReceipt,
   storage: StorageLike | null = browserStorage(),
@@ -45,19 +63,24 @@ export function acceptComposerRecentReceipt(
   if (!selection.success || !mode.success || isHighspeedProviderId(selection.data.providerId))
     return true;
   const key = resolveComposerRecentKey("", undefined, receipt.scope);
+  const value = JSON.stringify({
+    modelSelection: selection.data,
+    mode: mode.data,
+    order: receipt.order,
+  });
   try {
-    let previous: { order?: number } | null = null;
-    try {
-      previous = JSON.parse(storage.getItem(key) ?? "null");
-    } catch {
-      /* 损坏偏好可被真实接纳替换。 */
+    writeRecent(storage, key, value, receipt.order);
+    // 任务列表的“新建任务”入口不携带 projectId，读到的是 workspace 级 scope。
+    // 只写项目作用域会让用户刚选过的模型在新建对话时回落到默认值，所以额外落一份
+    // workspace 级副本；读取侧在精确 key 缺失时回退到这里。
+    if (receipt.scope.projectId) {
+      writeRecent(
+        storage,
+        resolveComposerRecentKey("", undefined, { ...receipt.scope, projectId: null }),
+        value,
+        receipt.order,
+      );
     }
-    // 回执/查询/快照可能重复到达；持久化顺序让刷新后的旧回执也不能回滚默认配置。
-    if (typeof previous?.order === "number" && previous.order >= receipt.order) return true;
-    storage.setItem(
-      key,
-      JSON.stringify({ modelSelection: selection.data, mode: mode.data, order: receipt.order }),
-    );
     return true;
   } catch (error) {
     logger.warn("[ComposerRecent] 接纳配置交接失败，保留命令恢复线索", error);
@@ -85,8 +108,22 @@ export function readComposerRecent(
   scope?: ComposerScope,
 ): ComposerRecent | null {
   if (!storage) return null;
+  const direct = readRecentAt(
+    storage,
+    resolveComposerRecentKey(workspacePath, workspaceIdentity, scope),
+  );
+  if (direct || !scope?.projectId) return direct;
+  // 该 scope 还没写过（典型场景：任务列表的“新建任务”丢了 projectId）。
+  // 回退到写入侧额外保存的 workspace 级副本，让上一次选中的模型继续生效。
+  return readRecentAt(
+    storage,
+    resolveComposerRecentKey(workspacePath, workspaceIdentity, { ...scope, projectId: null }),
+  );
+}
+
+function readRecentAt(storage: StorageLike, key: string): ComposerRecent | null {
   try {
-    const raw = storage.getItem(resolveComposerRecentKey(workspacePath, workspaceIdentity, scope));
+    const raw = storage.getItem(key);
     if (!raw) return null;
     const record: unknown = JSON.parse(raw);
     if (!record || typeof record !== "object" || Array.isArray(record)) return null;

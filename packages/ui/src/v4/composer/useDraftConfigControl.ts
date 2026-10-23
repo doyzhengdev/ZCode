@@ -172,6 +172,8 @@ export function useDraftConfigControl(params: {
     };
   }, [scopeKey]);
   const [storedState, setStoredState] = useState(loadedScope);
+  // 每次进入/重进「新建任务」只播种一次模型，之后用户的改动不再被覆盖。
+  const recentSeededScopeRef = useRef<string | null>(null);
   // 首发是同一 pane 的地址迁移，保持其间的新编辑；换页或卸载不保留第二份配置。
   let currentState: ComposerState =
     storedState.scopeKey === scopeKey
@@ -196,7 +198,15 @@ export function useDraftConfigControl(params: {
   );
   const modelSelectionView =
     modelSelectionRead.state.status === "ready" ? modelSelectionRead.state.view : null;
-  if (currentState.initialization === "new-task" && !draft.mode && modelSelectionView) {
+  // 空正文的「新建任务」每次进入都按 Recent 重新播种一次：草稿里残留的 modelSelection
+  // 会一直压住用户在别的会话里刚切过的模型，表现为“点新增对话还是默认模型”。
+  // 用 scopeKey 做闸门，同一次进入内的后续渲染与用户改选不会被反复覆盖。
+  if (
+    currentState.initialization === "new-task" &&
+    modelSelectionView &&
+    (!draft.mode || !draft.text.trim()) &&
+    recentSeededScopeRef.current !== scopeKey
+  ) {
     draft = initializeNewTaskDraft(
       draft,
       workspacePath,
@@ -204,6 +214,7 @@ export function useDraftConfigControl(params: {
       modelSelectionView,
       rootScope,
     );
+    recentSeededScopeRef.current = scopeKey;
   }
   // 空配置先初始化了权限，旧逻辑便因已有 mode 永久跳过模型初始化。
   // 仅为无模型原意图的 Root 草稿补齐首次可用选择；不重置正文、权限或 Plan，
