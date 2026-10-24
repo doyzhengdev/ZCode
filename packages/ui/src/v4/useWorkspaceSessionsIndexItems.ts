@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ZCodeTaskMeta } from "@zcode/shared";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
+import { isIdeHost } from "@/lib/ideHost.js";
 import { compareZCodeTaskListItems } from "@/lib/taskListOrdering.js";
 import { mapSessionSummaryToTaskMeta } from "@/v4/mapSessionSummaryToTaskMeta.js";
 import {
@@ -142,6 +143,33 @@ export function useWorkspaceSessionsIndexItems(
     // signature 覆盖 scopes、endpoint、workspacePath 与 service generation 变化；
     // reconcile 只 acquire/release 真正发生变化的绑定。
   }, [signature, baseAgentService, subscriptionSet]);
+
+  // IDE 宿主没有 window-controller 通道，侧栏 activity 完全依赖这条 sessions-index lane。
+  // 宿主侧 runtime 被外部回收/替换时订阅会静默失效（不保证有 lifecycle/restart 事件），
+  // 之后新建会话的 running 状态永远到不了列表，表现为运行中任务不转圈。
+  // 任务列表变化事件是重取全量快照最可靠的时机；只走事件驱动，不做周期重订——
+  // 轮询会变成订阅风暴。按事件所属 scope 重订，避免只修活动 workspace 的盲区；
+  // 频率由 SessionsIndexStore.resyncNow() 自带的 3 秒限流兜底。
+  useEffect(() => {
+    if (!isIdeHost()) return;
+    const taskService = baseServices.zcodeTaskService;
+    if (!taskService?.onDynamicWorkspaceEvent) return;
+    const subscriptions = scopesRef.current.flatMap((scope) => {
+      const agentService = scope.agentService ?? baseAgentService;
+      if (!agentService) return [];
+      const subscription = taskService.onDynamicWorkspaceEvent(scope)((event) => {
+        if (event.type !== "workspace_task_list_changed") return;
+        subscriptionSet
+          .getStore({
+            workspaceKey: workspaceKeyOf(scope),
+            ...(scope.endpointKey ? { endpointKey: scope.endpointKey } : {}),
+          })
+          ?.resyncNow();
+      });
+      return [subscription];
+    });
+    return () => subscriptions.forEach((subscription) => subscription.dispose());
+  }, [signature, baseAgentService, baseServices, subscriptionSet]);
 
   useEffect(
     () => () => {

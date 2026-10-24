@@ -169,23 +169,32 @@ export const ProjectSidebar = memo(function ProjectSidebar(props: ProjectSidebar
   const ideProject = useMemo(() => {
     if (!ideHost) return null;
     const target = normalizeProjectPath(props.workspacePath);
+    // 工作区可能是项目根的子目录，或路径经过 junction/symlink、盘符大小写不同，
+    // 因此除完全相等外也接受 target 落在 root 之下。
+    const matchesRoot = (rootPath: string) => {
+      const root = normalizeProjectPath(rootPath);
+      if (!root) return false;
+      return target === root || target.startsWith(`${root}/`);
+    };
     return (
       (projects as VirtualProject[]).find((project) =>
-        project.roots.some(
-          (root: { rootPath: string }) => normalizeProjectPath(root.rootPath) === target,
-        ),
+        project.roots.some((root: { rootPath: string }) => matchesRoot(root.rootPath)),
       ) ?? null
     );
   }, [ideHost, projects, props.workspacePath]);
-  const ideTasks = useMemo(
-    () =>
-      ideProject
-        ? (tree.tasks as ProjectTask[])
-            .filter((task) => task.projectId === ideProject.id && !task.archived)
-            .sort((left, right) => compareProjectTaskRows(left, right, "timeline"))
-        : [],
-    [ideProject, tree.tasks],
-  );
+  const hasProjects = projects.length > 0;
+  const ideTasks = useMemo(() => {
+    if (!ideHost) return [];
+    const rows = (tree.tasks as ProjectTask[]).filter((task) => !task.archived);
+    // 项目列表还没到时保持空列表，避免加载瞬间闪出其它项目的任务；项目已加载但
+    // 根路径匹配失败（子目录 / junction / 盘符大小写）时才退回全量，避免整栏空白。
+    const scoped = ideProject
+      ? rows.filter((task) => task.projectId === ideProject.id)
+      : hasProjects
+        ? rows
+        : [];
+    return scoped.sort((left, right) => compareProjectTaskRows(left, right, "timeline"));
+  }, [hasProjects, ideHost, ideProject, tree.tasks]);
   const expandableProjects = projects.filter(
     (project) => availability.get(projectKey(project))?.online !== false,
   );
@@ -275,7 +284,6 @@ export const ProjectSidebar = memo(function ProjectSidebar(props: ProjectSidebar
                   view={view}
                   onViewChange={setView}
                   groupedActionsRef={setGroupedToolbar}
-                  hideActions={ideHost}
                 />
                 {/* 原因：仅设 overflow-y:auto 会让拖拽位移打开水平滚动；列表始终只允许纵向滚动。 */}
                 {/* 原因：项目侧栏迁移后普通滚动容器遗漏边缘渐隐；复用统一 mask，随实际滚动边界更新。 */}

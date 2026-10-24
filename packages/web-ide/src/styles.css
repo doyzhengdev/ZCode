@@ -2,3 +2,12 @@
 
 /* 共享样式只扫描 UI 包；IDE 入口自己的状态类也要参与 Tailwind 生成。 */
 @source "./**/*.{ts,tsx}";
+
+/* IDE 内嵌形态只有一条最近对话列表：搜索 / 视图切换 / 自动化 / 插件市场入口隐藏。
+   选择器用上游 e2e 实际引用的 data-testid；失效时表现为元素复现，可见可查。 */
+[data-testid="sidebar-search-open"],
+[data-testid="sidebar-view-menu"],
+[data-testid="automations-open"],
+[data-testid="plugin-store-sidebar-open"] {
+  display: none;
+}

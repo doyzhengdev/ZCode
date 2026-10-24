@@ -170,6 +170,8 @@ export class SessionsIndexStore {
   private runtimeRestartReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private runtimeRestartBurstCount = 0;
   private lastRuntimeRestartAt = 0;
+  /** resyncNow 的时间限流（外部自愈重订，避免多消费者同时触发重复订阅）。 */
+  private lastResyncAt = 0;
   private subscribeRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private errorRecoveryRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private errorRecoveryRetryAttempt = 0;
@@ -694,6 +696,23 @@ export class SessionsIndexStore {
     this.cachedList = null;
     this.status = "dormant";
     this.emit();
+  }
+
+  /**
+   * 外部触发的强制重订。宿主侧订阅可能在不发 lifecycle/restart 事件的情况下失效
+   * （IDE 内嵌宿主里 agent runtime 被外部回收或替换时就是这样），此时 store 停在旧快照，
+   * 新的 running 会话永远不会到达。这里携当前 transport 重新全量订阅自愈投影。
+   * 调用方负责节流：每次都会新建一条订阅，server 只会为该 topic 保留最新一条。
+   */
+  resyncNow(): void {
+    if (this.closed || !this.transport) return;
+    // 同一 store 3s 内只重订一次：多个消费者同时触发时不会产生重复订阅。
+    // 不能用 awaitingInitial 当锁——订阅被宿主侧挤掉时它可能永远等不到首帧，
+    // 而那个状态恰恰是最需要重订的。
+    const now = Date.now();
+    if (now - this.lastResyncAt < 3000) return;
+    this.lastResyncAt = now;
+    void this.connect(this.transport, { forceSnapshot: true });
   }
 
   /** 释放订阅与监听（组件卸载 / workspace 切换）。 */
