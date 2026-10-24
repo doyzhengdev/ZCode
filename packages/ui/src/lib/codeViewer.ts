@@ -27,6 +27,9 @@ export interface FileCodeViewerSource extends CodeViewerWorkspaceScope {
   type: "file";
   title: string;
   path: string;
+  /** 消息链接里解析出的行号（1 起）。IDE 宿主据此定位到具体行。 */
+  lineNumber?: number;
+  columnNumber?: number;
 }
 
 export interface CodeReviewAnchor {

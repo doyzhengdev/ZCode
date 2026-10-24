@@ -30,21 +30,25 @@ async function readInitialWorkspace(): Promise<{
 }> {
   const params = new URLSearchParams(window.location.search);
   const override = params.get("ideWorkspace")?.trim();
+  // IDE 显式指定的项目优先：全 IDE 共用一个 server，server-info 的 workspaces[0] 只是
+  // server 的默认工作区，对其他项目的窗口是错的。identity 保持空（local 宿主形态）。
+  if (override) return { path: override };
   try {
     const response = await fetch("/api/server-info", { cache: "no-store" });
-    if (!response.ok) return override ? { path: override } : {};
+    if (!response.ok) return {};
     const info = (await response.json()) as {
       serverId?: string;
       workspaces?: Array<{ path?: string; workspaceIdentity?: string }>;
     };
     const workspace = info.workspaces?.[0];
-    const path = workspace?.path ?? override;
     // local 宿主形态下 UI 直连本地 server，与桌面客户端共用 "local" 身份，无需构造
     // remote 身份；server-info 返回什么 workspaceIdentity 就用什么（通常为空）。
-    const identity = workspace?.workspaceIdentity ?? undefined;
-    return { path, identity };
+    return {
+      path: workspace?.path,
+      identity: workspace?.workspaceIdentity ?? undefined,
+    };
   } catch {
-    return override ? { path: override } : {};
+    return {};
   }
 }
 
@@ -59,6 +63,23 @@ function renderFatal(error: unknown): void {
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+
+type ServiceAccessor = Awaited<ReturnType<typeof connectViaWebSocket>>;
+
+/**
+ * IDE 宿主是单窗口形态：桌面端的窗口 Host 由 Electron 主进程注册 `window-controller` 通道，
+ * 独立 server 没有该通道。代理对象本身存在，所以 UI 的 `controller ? … : …` 判断会走错分支，
+ * 归档/置顶发出 `controller.mutateTask` 后得到 "Unknown channel: window-controller"，
+ * 侧栏提示「归档任务失败」。屏蔽后这些命令统一回落到 zcodeTaskService。
+ */
+function forIdeHost(services: ServiceAccessor): ServiceAccessor {
+  return new Proxy(services, {
+    get(target, property) {
+      if (property === "windowControllerService") return undefined;
+      return Reflect.get(target, property, target);
+    },
+  });
 }
 
 /**
@@ -100,10 +121,11 @@ async function bootstrap(): Promise<void> {
   // IDE → Web 推送（右键菜单发送文件引用等）；工作区路径在下面解析出来后经闭包读取。
   installIdeContextPush(() => pushWorkspace);
   const [services, initialWorkspace] = await Promise.all([
-    connectViaWebSocket(resolveWsUrl(), { onClose: () => {} }),
+    connectViaWebSocket(resolveWsUrl(), { onClose: () => {} }).then(forIdeHost),
     readInitialWorkspace(),
   ]);
-  const platform = createIdePlatform();
+  // MCP 用户目录读写走本机 server 的 mcpSyncService（桌面端对应能力在 Electron 主进程）。
+  const platform = createIdePlatform(services);
   document.title = "ZCode - IDE";
 
   // 插件按 IDE 语言注入 ideLocale；localePreference=system 时用它代替 navigator.language。
@@ -138,6 +160,9 @@ async function bootstrap(): Promise<void> {
           preferDirectoryBrowser={false}
           supportsEmbeddedBrowser={false}
           allowRemoteWorkspace={false}
+          // 不伪装桌面：窗口控制、托盘、自动更新、电源、剪贴板这些本来就该由 IDE 承担，
+          // 置 isDesktop=true 只会把它们和桌面窗口框架一起画进 JCEF，还得再逐项裁剪。
+          // 真正需要的本机数据能力（MCP 用户目录）已在 idePlatform.ts 里按能力补齐。
           isDesktop={false}
         />
       </ZCodeIntlProvider>

@@ -2,8 +2,9 @@
  * IDE → Web 的主动推送通道（Java → JS 方向）。
  *
  * 插件侧（ZCodePanel）通过 executeJavaScript 调 `window.__zcodeIdeMessage(json)`，
- * 与 JS → Java 的 `window.__ZCODE_IDE_QUERY__` 相对。目前消费一种消息：
- * `{op:"filesToInput", refs:[{path, kind}]}` —— IDE 项目树右键「发送到 ZCode 对话框」。
+ * 与 JS → Java 的 `window.__ZCODE_IDE_QUERY__` 相对。目前消费两种消息：
+ * - `{op:"filesToInput", refs:[{path, kind}]}` —— IDE 项目树右键「发送到 ZCode 对话框」；
+ * - `{op:"selectionToInput", refs:[{path, startLine, endLine}]}` —— 编辑器选区右键（只发引用，不发原文）。
  */
 import { useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import type { ComposerMentionPrefill } from "@/store/zcodeSessionStoreTypes.js";
@@ -12,6 +13,8 @@ import { buildFileMentionMarkdown } from "@/mentions/mentionMarkdown.js";
 interface IdeFileRef {
   path: string;
   kind?: "file" | "directory";
+  startLine?: number;
+  endLine?: number;
 }
 
 interface IdePushMessage {
@@ -42,7 +45,14 @@ export function installIdeContextPush(getWorkspace: () => IdePushWorkspace): voi
     }
     if (message.op === "filesToInput" && message.refs?.length) {
       void insertFileRefs(message.refs, getWorkspace());
+      return;
     }
+    if (message.op === "selectionToInput" && message.refs?.length) {
+      void insertSelectionRefs(message.refs, getWorkspace());
+      return;
+    }
+    // 拼错 op 时不能静默：否则 IDE 侧加了新消息、页面没消费，表现为点击无反应。
+    console.warn("[web-ide] unhandled ide push op", message.op);
   };
 }
 
@@ -94,6 +104,43 @@ async function insertFileRefs(refs: IdeFileRef[], workspace: IdePushWorkspace): 
         mention.markdown,
         workspace.identity,
         mention,
+        "prepend-if-missing",
+      );
+    await nextFrame();
+  }
+}
+
+/**
+ * 编辑器选区：插入「完整文件路径 + GitHub 行锚点」，如
+ * `E:/gitee/zcode-ide/src/a.ts#L12-L20`，不带选中原文。
+ *
+ * 模型能按路径和行号自己读文件，避免把大段代码重复塞进 prompt；
+ * `#Lx-Ly` 也是 ZCode 的 markdown 文件链接解析器接受的写法。
+ */
+async function insertSelectionRefs(
+  refs: IdeFileRef[],
+  workspace: IdePushWorkspace,
+): Promise<void> {
+  const workspacePath = workspace.path?.trim();
+  if (!workspacePath) {
+    console.warn("[web-ide] selectionToInput ignored: no workspace");
+    return;
+  }
+  for (const ref of refs) {
+    if (!ref.path) continue;
+    // 完整路径统一成正斜杠：反斜杠在部分上下文里会被当转义符。
+    const fullPath = normalizeForCompare(ref.path);
+    const startLine = ref.startLine && ref.startLine > 0 ? ref.startLine : 1;
+    const endLine = ref.endLine && ref.endLine >= startLine ? ref.endLine : startLine;
+    const anchor = endLine > startLine ? `#L${startLine}-L${endLine}` : `#L${startLine}`;
+    const markdown = `${fullPath}${anchor}`;
+    useZCodeSessionStore
+      .getState()
+      .requestComposerTextInsert(
+        workspacePath,
+        markdown,
+        workspace.identity,
+        undefined,
         "prepend-if-missing",
       );
     await nextFrame();

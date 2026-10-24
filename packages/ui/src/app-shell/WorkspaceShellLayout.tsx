@@ -1553,8 +1553,10 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
   );
   // 草稿头部保留项目菜单与 Git 分支；项目目录由共享 Provider 提供。
   // Shell 只连接既有导航回调，pane 不持有另一份项目列表或 cwd 归属推断。
-  const draftComposerHeader = useMemo(
-    () => (
+  // IDE 宿主里项目与分支由 IDE 自身管理，草稿输入框上方不再重复展示这两个切换入口。
+  const draftComposerHeader = useMemo(() => {
+    if (ideHost) return undefined;
+    return (
       <ProjectComposerMenu
         showEditProject
         workspacePath={workspaceAbsPath}
@@ -1591,9 +1593,10 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
           />
         ) : null}
       </ProjectComposerMenu>
-    ),
-    [
-      isOfficeMode,
+    );
+  }, [
+    ideHost,
+    isOfficeMode,
       workspaceRemoteSessionId,
       handleOpenPluginStore,
       handleSelectComposerPlugin,
@@ -1659,6 +1662,8 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
             type: "file",
             title: getPathLeaf(target.path),
             path: target.path,
+            ...(target.lineNumber ? { lineNumber: target.lineNumber } : {}),
+            ...(target.columnNumber ? { columnNumber: target.columnNumber } : {}),
             workspacePath: target.workspacePath,
             workspaceIdentity: target.workspaceIdentity,
             workspaceRemoteSessionId: target.workspaceRemoteSessionId,
@@ -1719,6 +1724,8 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
             type: "file",
             title: getPathLeaf(target.path),
             path: target.path,
+            ...(target.lineNumber ? { lineNumber: target.lineNumber } : {}),
+            ...(target.columnNumber ? { columnNumber: target.columnNumber } : {}),
             workspacePath: target.workspacePath,
             workspaceIdentity: target.workspaceIdentity,
             workspaceRemoteSessionId: target.workspaceRemoteSessionId,

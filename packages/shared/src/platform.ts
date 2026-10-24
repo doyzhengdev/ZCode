@@ -860,7 +860,16 @@ export interface IPlatformService {
   openInFileManager(path: string): Promise<{ success: boolean; error?: string }>;
 
   /** 使用系统默认应用打开本地文件；普通 Web 平台返回 unsupported。 */
-  openExternalFile?(path: string): Promise<{ success: boolean; error?: string }>;
+  openExternalFile?(
+    path: string,
+    location?: { line?: number; column?: number },
+  ): Promise<{ success: boolean; error?: string }>;
+
+  /**
+   * 在宿主的项目树中定位文件/目录。只有 IDE 宿主实现：
+   * 桌面端有独立的文件管理器，Web 端没有可定位的宿主项目树。
+   */
+  selectInProjectView?(path: string): Promise<{ success: boolean; error?: string }>;
 
   /** 打开 ZCode Computer Use 的完整权限引导。Desktop only。 */
   openCuaPermissionOnboarding?(

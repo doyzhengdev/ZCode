@@ -9,6 +9,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createUuid } from "@zcode/shared";
 import type { EmbeddedBrowserOpenUrlRequest, IPlatformService } from "@zcode/shared";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
+import { isIdeHost } from "@/lib/ideHost.js";
+import { openFileSourceInIdeEditor } from "@/lib/ideFileOpen.js";
+import { isWorkspaceFilePathInside } from "@/workspace-file-tree/model.js";
 // 保活：side pane terminal 跨 workspace 会话上移到模块级 registry。
 // 关闭 terminal tab 时必须显式 release，杀掉 PTY，避免常驻 registry 造成孤儿进程。
 import { sidePaneTerminalSessionRegistry } from "@/terminal/sidePaneTerminalSessionRegistry.js";
@@ -169,6 +172,8 @@ export function useAppPanels(options: {
     | "onBrowserViewRestore"
     | "browserViewCloseTab"
     | "browserViewEnsureResident"
+    | "openExternalFile"
+    | "selectInProjectView"
   >;
 }) {
   const {
@@ -390,6 +395,21 @@ export function useAppPanels(options: {
         requestFileManager(target);
         return;
       }
+      // IDE 宿主：目录定位交给 IDE 项目树，避免再叠一层内置文件树。
+      // 工作区外的临时目录在项目树里没有对应节点，保持内置文件树兜底。
+      if (
+        isIdeHost() &&
+        platform?.selectInProjectView &&
+        (!target ||
+          (!target.temporaryExternalDirectory &&
+            isWorkspaceFilePathInside(
+              workspaceAbsPath,
+              target.revealPath ?? target.workspacePath,
+            )))
+      ) {
+        void platform.selectInProjectView(target?.revealPath ?? target?.workspacePath ?? workspaceAbsPath);
+        return;
+      }
       revealSidePaneForCurrentOwner();
       commitOpenedSidePaneState((current) =>
         openFileManagerSidePane(
@@ -405,6 +425,7 @@ export function useAppPanels(options: {
     [
       requestFileManager,
       commitOpenedSidePaneState,
+      platform,
       revealSidePaneForCurrentOwner,
       workspaceAbsPath,
       workspaceIdentity,
@@ -428,13 +449,31 @@ export function useAppPanels(options: {
 
   const handleNavigateFileManager = useCallback(
     (tabId: string, source: CodeViewerSource) => {
+      // IDE 宿主：面板里点文件同样回到统一入口（最终开在 IDE 编辑器），
+      // 否则用户从对话被带进内置文件树后，再点文件就永远困在面板里。
+      if (
+        isIdeHost() &&
+        platform?.openExternalFile &&
+        openFileSourceInIdeEditor(source, workspaceAbsPath, platform)
+      ) {
+        return;
+      }
       commitSidePaneState((current) => navigateFileManagerSidePane(current, tabId, source));
     },
-    [commitSidePaneState],
+    [commitSidePaneState, platform, workspaceAbsPath],
   );
 
   const handleOpenCodeViewer = useCallback(
     (source: CodeViewerSource) => {
+      // 全站唯一的「内置查看器」入口：IDE 宿主里文件统一交给 IDE 编辑器，
+      // 放在这层才能覆盖对话链接、工具调用行、预览卡片等所有调用点。
+      if (
+        isIdeHost() &&
+        platform?.openExternalFile &&
+        openFileSourceInIdeEditor(source, workspaceAbsPath, platform)
+      ) {
+        return;
+      }
       revealSidePaneForCurrentOwner();
       commitOpenedSidePaneState((current) => {
         const next = openCodeViewerSidePane(current, source, sidePaneOwnerIdRef.current);
@@ -447,7 +486,7 @@ export function useAppPanels(options: {
         return next;
       });
     },
-    [commitOpenedSidePaneState, revealSidePaneForCurrentOwner, workspaceAbsPath],
+    [commitOpenedSidePaneState, platform, revealSidePaneForCurrentOwner, workspaceAbsPath],
   );
 
   const handleOpenCodeViewers = useCallback(

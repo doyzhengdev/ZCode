@@ -40,6 +40,7 @@ import { Button } from "@/components/ui/button.js";
 import { toast } from "@/components/ui/toast.js";
 import { DesktopWindowFrame } from "@/DesktopWindowFrame.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { isIdeHost } from "@/lib/ideHost.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { logger } from "@/logger.js";
 import { getPathLeaf } from "@/lib/path.js";
@@ -2103,7 +2104,10 @@ export function SettingsPage({
                                 memoryEnabled={memoryEnabled}
                                 memoryService={localHostServices.memoryService}
                                 onMemoryEnabledChange={handleMemoryEnabledChange}
-                                projectMemoryViewerAvailable={Boolean(isDesktop)}
+                                // 记忆详情读的就是本机目录，IDE 宿主同样可读（memoryService 在本地 Host）。
+                                // 上游把"能不能读"写死成 isDesktop，没有能力位可拦截，这是唯一保留的
+                                // 上游 UI 改动：桌面端/独立 web 端行为不变。
+                                projectMemoryViewerAvailable={Boolean(isDesktop) || isIdeHost()}
                                 workspaceDisplayNames={memoryWorkspaceDisplayNames}
                               />
                             </ServiceProvider>

@@ -391,6 +391,9 @@ export interface MessageFileLinkTarget {
   label: string;
   /** 仅用于显式尾随斜杠的目录展示提示；打开第三方应用前必须重新 stat。 */
   pathKind?: NonNullable<OpenInEditorOptions["pathKind"]>;
+  /** Markdown 链接里解析出的行号/列号（1 起），IDE 宿主打开时用于定位。 */
+  lineNumber?: number;
+  columnNumber?: number;
   relativePath?: string;
   workspacePath?: string;
   workspaceIdentity?: string;
@@ -934,6 +937,8 @@ export function buildMessageFileLinkTarget(input: {
   href: string;
   label: string;
   path: string;
+  lineNumber?: number | null;
+  columnNumber?: number | null;
   workspacePath?: string;
   workspaceIdentity?: string;
   workspaceRemoteSessionId?: string;
@@ -947,6 +952,8 @@ export function buildMessageFileLinkTarget(input: {
     path: input.path,
     label: input.label,
     pathKind,
+    ...(input.lineNumber ? { lineNumber: input.lineNumber } : {}),
+    ...(input.columnNumber ? { columnNumber: input.columnNumber } : {}),
     relativePath: input.workspacePath
       ? getWorkspaceFileRelativePath(input.workspacePath, input.path)
       : input.label,
@@ -1446,6 +1453,8 @@ export const MessageResponse = memo(
               href: resolvedHref,
               path: fileLink.path,
               label: labelText,
+              lineNumber: fileLink.lineNumber,
+              columnNumber: fileLink.columnNumber,
               workspacePath,
               workspaceIdentity,
               workspaceRemoteSessionId,
