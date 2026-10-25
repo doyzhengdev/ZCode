@@ -1,0 +1,14 @@
+{
+  "name": "@zcode/ide-remote-bridge",
+  "private": true,
+  "type": "module",
+  "description": "IDE 插件侧 Web 远控 device 桥：复用官方 desktop relay transport，把手机 RPC 转发到本地 server",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --experimental-strip-types --test test/workspace-keys.test.ts",
+    "typecheck": "node ../../node_modules/typescript/bin/tsc -p . --noEmit"
+  },
+  "dependencies": {
+    "@zcode/rpc": "workspace:*"
+  }
+}

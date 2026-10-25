@@ -50,6 +50,7 @@ import { useZCodeStore } from "@/store/StoreProvider.js";
 import { normalizeInterfaceMode } from "@/lib/interfaceMode.js";
 import type { Theme } from "@/useTheme.js";
 import { WorkspaceWebRemoteControlTrigger } from "@/WorkspaceWebRemoteControlTrigger.js";
+import { isIdeHost } from "@/lib/ideHost.js";
 import {
   WorkspaceSidebarFooterPlanBadge,
   WorkspaceSidebarFooterUsageSummaryContent,
@@ -466,7 +467,8 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
           </DropdownMenuContent>
         </DropdownMenu>
         <div className="flex shrink-0 items-center gap-1.5">
-          {isDesktop && workspacePath ? (
+          {/* IDE 宿主同样提供远控 device 桥；桌面端与独立 Web 端行为不变。 */}
+          {(isDesktop || isIdeHost()) && workspacePath ? (
             <WorkspaceWebRemoteControlTrigger
               workspacePath={workspacePath}
               workspaceIdentity={workspaceIdentity}

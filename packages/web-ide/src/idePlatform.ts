@@ -13,6 +13,7 @@ import type {
   MaterializeWorkflowArtifactFileResult,
   SaveCliMcpToUserDirectoryRequest,
   SaveFileResult,
+  WebRemoteControlStatus,
 } from "@zcode/shared";
 import { invoke } from "./ideBridge.js";
 
@@ -141,7 +142,7 @@ export function createIdePlatform(services?: IdePlatformServices): IPlatformServ
       void invoke("showTaskNotification", payload);
     },
 
-    // ---- 远程 / 多窗口 / 容器：IDE 首期不做 ----
+    // ---- 远程工作区 / 容器：IDE 不做；Web 远控由插件进程桥接 ----
     onRemoteConnectionLog: () => () => {},
     onRemoteSessionClosed: () => () => {},
     onRemoteSessionReconnected: () => () => {},
@@ -150,9 +151,40 @@ export function createIdePlatform(services?: IdePlatformServices): IPlatformServ
     requestSourceSettingsAttachment: () => Promise.reject(new Error("remote_not_supported")),
     cancelPendingRemoteConnection: () => Promise.resolve(),
     bindRemoteWorkspaceSessionContext: () => Promise.reject(new Error("remote_not_supported")),
-    startWebRemoteControl: () => Promise.reject(new Error("web_remote_control_not_supported")),
-    stopWebRemoteControl: () => Promise.resolve(),
-    getWebRemoteControlStatus: () => Promise.resolve({ status: "idle" }),
+    startWebRemoteControl: async (context) => {
+      const result = await invoke<{
+        sessionId: string;
+        windowControlSessionId?: string;
+        qrUrl: string;
+        connectUrl: string;
+        workspacePath: string;
+        workspaceIdentity?: string;
+      }>("startWebRemoteControl", {
+        workspacePath: context.workspacePath,
+        workspaceIdentity: context.workspaceIdentity,
+      });
+      return {
+        status: "running",
+        sessionId: result.sessionId,
+        windowControlSessionId: result.windowControlSessionId,
+        qrUrl: result.qrUrl,
+        connectUrl: result.connectUrl,
+        workspacePath: result.workspacePath,
+        ...(result.workspaceIdentity ? { workspaceIdentity: result.workspaceIdentity } : {}),
+        ...(context.remoteSessionId ? { remoteSessionId: context.remoteSessionId } : {}),
+        ...(context.initialTaskId ? { initialTaskId: context.initialTaskId } : {}),
+      };
+    },
+    stopWebRemoteControl: async () => {
+      await invoke("stopWebRemoteControl", {});
+    },
+    getWebRemoteControlStatus: async () => {
+      const status = await invoke<WebRemoteControlStatus | undefined>(
+        "getWebRemoteControlStatus",
+        {},
+      );
+      return status ?? { status: "idle" };
+    },
     onWebRemoteControlStatusChanged: () => () => {},
     disposeRemoteSession: () => Promise.resolve(),
     notifyWebRemoteControlAuthStateChanged: () => {},

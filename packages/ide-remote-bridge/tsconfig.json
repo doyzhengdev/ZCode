@@ -1,0 +1,25 @@
+{
+  // 仅用于类型检查（构建走 scripts/build.mjs 的 esbuild 单文件打包）。
+  //
+  // 继承 base（nodenext、非 strict、verbatim、noUncheckedIndexedAccess），让连带检查的
+  // shared / client / desktop 源码与各自包的原始口径一致；rpc 通过包名导入消费其
+  // dist 声明产物（rpc 的 tsconfig 不继承 base，直接检查源码会互相报错）。
+  // desktop 的两个 relay transport 文件没有独立 tsconfig 可引用（引用 noEmit 工程会
+  // TS6310），只能以 base 口径连带检查——与 desktop-main 同族配置，实践上无错。
+  //
+  // 不进根 typecheck 的 tsc -b 清单：本包不是 composite（composite 禁止跨包源码导入，
+  // TS6307），而根 typecheck 脚本属于官方 package.json，补丁预算已满不改它；
+  // 由自身 typecheck 脚本与插件 CI 独立调用。
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "lib": ["es2025"],
+    "types": ["node"],
+    // 测试用 node --experimental-strip-types 直跑 .ts 源文件，import 带 .ts 后缀。
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

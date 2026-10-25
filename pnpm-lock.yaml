@@ -1154,6 +1154,12 @@ importers:
         specifier: ^8.0.2
         version: 8.0.8(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.9.0)
 
+  packages/ide-remote-bridge:
+    dependencies:
+      '@zcode/rpc':
+        specifier: workspace:*
+        version: link:../rpc
+
   packages/model-option-map:
     devDependencies:
       typescript:
