@@ -9,7 +9,6 @@ import {
   PanelLeftOpen,
 } from "lucide-react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { isIdeHost } from "@/lib/ideHost.js";
 import { UpdateStatusButton } from "@/UpdateStatusButton.js";
 import { DesktopTopOverlayActionButton } from "@/DesktopTopOverlayActionButton.js";
 import { ZCodeStartupLogoBadge } from "@/root/RootStartupLoading.js";
@@ -79,7 +78,6 @@ export function DesktopTopOverlay({
 }: DesktopTopOverlayProps) {
   const { intl } = useZCodeIntl();
   const SidebarToggleIcon = isSidebarVisible ? PanelLeftClose : PanelLeftOpen;
-  const ideHost = isIdeHost();
   const isLinuxDesktop = Boolean(isDesktop && !isMacDesktop && !isWindowsDesktop);
   const usesCustomCaptionArea = isWindowsDesktop || isLinuxDesktop;
   const toggleSidebarTitle = intl.formatMessage({
@@ -168,10 +166,8 @@ export function DesktopTopOverlay({
               </DesktopTopOverlayActionButton>
             )}
 
-            {/* IDE 宿主没有桌面标题栏浮层，侧栏开关由 WorkspaceShellLayout 的折叠把手承担。 */}
-
-            {/* IDE 宿主没有桌面标题栏浮层，任务前进/后退也不适用。 */}
-            {hideTaskNavigationButtons || ideHost ? null : (
+            {/* 远程控制移动端左上角空间有限，任务前进/后退在这里会与主操作拥挤重叠。*/}
+            {hideTaskNavigationButtons ? null : (
               <>
                 <DesktopTopOverlayActionButton
                   title={taskBackTitle}

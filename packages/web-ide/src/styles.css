@@ -3,11 +3,34 @@
 /* 共享样式只扫描 UI 包；IDE 入口自己的状态类也要参与 Tailwind 生成。 */
 @source "./**/*.{ts,tsx}";
 
-/* IDE 内嵌形态只有一条最近对话列表：搜索 / 视图切换 / 自动化 / 插件市场入口隐藏。
+/* IDE 内嵌形态只有一条最近对话列表：新建任务 / 搜索 / 视图切换 / 自动化 / 插件市场入口隐藏。
+   新建任务由头部右上角 ➕ 承担；这一行放进来后会在侧栏顶部留下一个与列表无关的快捷键入口。
    选择器用上游 e2e 实际引用的 data-testid；失效时表现为元素复现，可见可查。 */
+[data-testid="task-new-button"],
 [data-testid="sidebar-search-open"],
 [data-testid="sidebar-view-menu"],
 [data-testid="automations-open"],
 [data-testid="plugin-store-sidebar-open"] {
   display: none;
+}
+
+/* 顶部导航的三个入口都在上面隐藏后，容器只剩 py-3 的上下留白，会在任务列表上方占一块空白。
+   IDE 里这一组入口整体不提供，容器一起收起，列表直接接在顶部拖拽区下方。 */
+[data-testid="sidebar-primary-navigation"] {
+  display: none;
+}
+
+/* IDE 没有桌面顶部浮层：侧栏开关由折叠把手承担，前进/后退、新建对话、更新在 IDE 另有入口
+   或由 IDE 承担。整个浮层根节点隐藏，避免侧栏收起后左上角浮出孤立按钮。
+   根节点没有 data-testid，用 Tailwind 生成的容器名定位；上游改名时按钮会重新出现，可见可查。 */
+[class*="topoverlayer"] {
+  display: none;
+}
+
+/* IDE 没有桌面顶部浮层：侧栏收起时 header 内层与 Side Pane 完整视图 tab 栏仍会加上
+   pl-38 / pl-44 给浮层按钮让位，收起态因此出现一块空白。这两个类只由
+   resolveTopOverlayLeadingPaddingClass 产出，直接在 IDE 入口清零。 */
+.pl-38,
+.pl-44 {
+  padding-left: 0;
 }
