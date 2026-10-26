@@ -13,6 +13,7 @@ import type {
   MaterializeWorkflowArtifactFileResult,
   SaveCliMcpToUserDirectoryRequest,
   SaveFileResult,
+  WebRemoteControlContext,
   WebRemoteControlStatus,
 } from "@zcode/shared";
 import { invoke } from "./ideBridge.js";
@@ -151,7 +152,7 @@ export function createIdePlatform(services?: IdePlatformServices): IPlatformServ
     requestSourceSettingsAttachment: () => Promise.reject(new Error("remote_not_supported")),
     cancelPendingRemoteConnection: () => Promise.resolve(),
     bindRemoteWorkspaceSessionContext: () => Promise.reject(new Error("remote_not_supported")),
-    startWebRemoteControl: async (context) => {
+    startWebRemoteControl: async (context: WebRemoteControlContext) => {
       const result = await invoke<{
         sessionId: string;
         windowControlSessionId?: string;
@@ -194,11 +195,11 @@ export function createIdePlatform(services?: IdePlatformServices): IPlatformServ
     listSSHConfigAliases: () => Promise.resolve([]),
     // 宿主侧 MCP 配置目录：转发给本机 zcode-server，不能返回空 stub——
     // MCP store 对本地 workspace 固定走 platform 分支，「已安装」列表直接读它。
-    loadMcpFromUserDirectory: (payload) =>
+    loadMcpFromUserDirectory: (payload?: LoadCliMcpFromUserDirectoryRequest) =>
       services?.mcpSyncService?.loadMcpFromUserDirectory
         ? services.mcpSyncService.loadMcpFromUserDirectory(payload)
         : Promise.resolve({ servers: [] }),
-    saveMcpToUserDirectory: async (payload) => {
+    saveMcpToUserDirectory: async (payload: SaveCliMcpToUserDirectoryRequest) => {
       const bridge = services?.mcpSyncService;
       if (!bridge?.saveMcpToUserDirectory) {
         return { success: false, error: "MCP 目录管理在 IDE 宿主中不可用" };

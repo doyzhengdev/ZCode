@@ -1,0 +1,23 @@
+{
+  // 仅服务编辑器类型检查：vite build 走 esbuild，不读这个文件。
+  // 公共选项统一继承仓库根 base，这里只保留 web-ide 特有的覆盖与必要的关闭项。
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // base 是给 tsc -b 的 composite 工程准备的；web-ide 只做检查不参与构建，
+    // 否则经 exports 拉进来的依赖源码会被判为"未列入 project"（TS6307）。
+    "composite": false,
+    // 浏览器运行环境 + Vite 的资源模块声明（.css 等）。
+    "lib": ["ES2025", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"],
+    // 与 vite.config.ts 的 resolve.alias 对齐：源码里的 "@/..." 指向 packages/ui/src。
+    "paths": {
+      "@/*": ["../ui/src/*"]
+    },
+    "strict": true,
+    "noEmit": true
+  },
+  // vite.config.ts 必须显式纳入：它用到 import.meta 与 @zcode/shared 的 exports 子路径，
+  // 落在 project 之外时编辑器会退回 node10 解析与 commonjs module，报 TS2307 / TS1343。
+  "include": ["src", "vite.config.ts"]
+}
