@@ -48,6 +48,14 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       include: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
     },
+    worker: {
+      rollupOptions: {
+        // @pierre/diffs 的 worker 入口依赖 import 后注册 message 监听。
+        // 它的 package sideEffects 漏声明会让生产 worker 子构建被摇成 0B；
+        // 只关闭 worker 构建的摇树，避免影响主包。
+        treeshake: false,
+      },
+    },
     define: {
       __ZCODE_VERSION__: JSON.stringify(version),
       __ZCODE_MIN_COMPATIBLE_VERSION__: JSON.stringify(minCompatibleVersion),
