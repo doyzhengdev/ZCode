@@ -21,7 +21,6 @@ import type { TaskChatMessage as TestChatMessage } from "@/lib/taskChatMessageTy
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
 import { getPathLeaf } from "@/lib/path.js";
-import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import {
   addPluginStoreOpenListener,
   type PluginStoreOpenTarget,
@@ -615,11 +614,10 @@ export function App({
     }
   }, [handleToggleGit, workspaceReadOnlyReason]);
   const handleOpenCodeViewerIfWritable = useCallback(
-    (source: CodeViewerSource) => {
-      if (workspaceReadOnlyReason) return;
-      // IDE 宿主的「改用 IDE 编辑器打开」已经下沉到 useAppPanels 的唯一入口，
-      // 那里能覆盖对话链接、工具调用行与预览卡片；这里只保留只读工作区拦截。
-      handleOpenCodeViewer(source);
+    (...args: Parameters<typeof handleOpenCodeViewer>) => {
+      if (!workspaceReadOnlyReason) {
+        handleOpenCodeViewer(...args);
+      }
     },
     [handleOpenCodeViewer, workspaceReadOnlyReason],
   );
