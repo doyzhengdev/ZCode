@@ -34,3 +34,14 @@
 .pl-44 {
   padding-left: 0;
 }
+
+/* 拖拽分割线悬停高亮：上游用 platform-*-desktop:after:bg-resize-handle 把默认的
+   foreground-subtlest/50（浅灰）换成品牌蓝，平台 class 由 Electron 入口挂到 <html>。
+   IDE 入口不能挂 platform-windows-desktop —— 同一个 variant 还控制窗口控制按钮、
+   标题栏安全区（WelcomeScreen）、图片预览浮层的标题栏偏移，挂上会在 IDE 里画出多余元素。
+   这里只补高亮色本身；覆盖侧栏把手（data-testid）与 react-resizable-panels 的分割线
+   （data-separator，含终端面板）。html 前缀只为稳压 Tailwind 工具类的同权重声明。 */
+html [data-separator]::after,
+html [data-testid="resizable-handle"]::after {
+  background-color: var(--color-resize-handle);
+}
