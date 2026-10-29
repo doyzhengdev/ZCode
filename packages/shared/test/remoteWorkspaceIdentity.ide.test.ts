@@ -9,10 +9,10 @@ import {
 
 describe("parseRemoteWorkspaceIdentity (IDE Windows drive form)", () => {
   it("Windows 盘符路径：identity 存 /E:/x 形态，解析还原为 E:/x", () => {
-    expect(parseRemoteWorkspaceIdentity("remote:server:zdy-pc:/E:/gitee/ezllm")).toEqual({
+    expect(parseRemoteWorkspaceIdentity("remote:server:host-a:/E:/work/ezllm")).toEqual({
       kind: "server",
-      sourceServerId: "zdy-pc",
-      workspacePath: "E:/gitee/ezllm",
+      sourceServerId: "host-a",
+      workspacePath: "E:/work/ezllm",
     });
     // 盘根 /C: 还原为 C:
     expect(parseRemoteWorkspaceIdentity("remote:server:s:/C:")).toEqual({
@@ -24,10 +24,10 @@ describe("parseRemoteWorkspaceIdentity (IDE Windows drive form)", () => {
 
   it("Windows 盘符路径 build(parse(identity)) 恒等，hostId 裁剪不漂移", () => {
     const identity = buildServerRemoteWorkspaceIdentity({
-      serverId: "ZDY-PC",
-      workspacePath: "E:\\gitee\\ezllm",
+      serverId: "host-a",
+      workspacePath: "E:\\work\\ezllm",
     });
-    expect(identity).toBe("remote:server:zdy-pc:/E:/gitee/ezllm");
+    expect(identity).toBe("remote:server:host-a:/E:/work/ezllm");
     const parsed = parseRemoteWorkspaceIdentity(identity)!;
     expect(
       buildServerRemoteWorkspaceIdentity({
@@ -35,7 +35,7 @@ describe("parseRemoteWorkspaceIdentity (IDE Windows drive form)", () => {
         workspacePath: parsed.workspacePath,
       }),
     ).toBe(identity);
-    expect(remoteHostIdFromWorkspaceIdentity(identity)).toBe("remote:server:zdy-pc");
+    expect(remoteHostIdFromWorkspaceIdentity(identity)).toBe("remote:server:host-a");
     expect(remoteHostIdFromWorkspaceIdentity("remote:wsl:Debian:/home/dev")).toBe(
       "remote:wsl:Debian",
     );

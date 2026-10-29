@@ -98,7 +98,7 @@ export class DeviceBridge {
     const serverInfo = await this.readServerInfo();
 
     // 插件使用自己的设备身份，与桌面客户端完全分开：
-    // - 手机端能同时看到 `ZDY-PC`（桌面）与 `ZDY-PC (IDE)`，并区分哪个端在线；
+    // - 手机端能同时看到 `host-a`（桌面）与 `host-a (IDE)`，并区分哪个端在线；
     // - 两端可以同时开启远控，不会互相把对方踢下线；
     // - deviceMid/deviceSid 持久化在 ~/.zcode/v2/ide-remote-device.json，链接长期稳定。
     const stored = this.readStoredState();

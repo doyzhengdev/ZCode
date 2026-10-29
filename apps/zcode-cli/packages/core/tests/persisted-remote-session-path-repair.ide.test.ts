@@ -71,11 +71,11 @@ function createUpdater(session: SessionInfo) {
 
 describe("repairPersistedRemoteSessionPaths (IDE Windows drive form)", () => {
   it("repairs the legacy leading-slash form for Windows server sessions", async () => {
-    const identity = "remote:server:zdy-pc:/E:/gitee/ezllm";
+    const identity = "remote:server:host-a:/E:/work/ezllm";
     const session = createSession({
       workspaceID: identity as WorkspaceId,
-      directory: "/E:/gitee/ezllm",
-      path: "/E:/gitee/ezllm",
+      directory: "/E:/work/ezllm",
+      path: "/E:/work/ezllm",
     });
     const { store, repairRemoteSessionPaths, updateSession } = createUpdater(session);
 
@@ -84,13 +84,13 @@ describe("repairPersistedRemoteSessionPaths (IDE Windows drive form)", () => {
     expect(repairRemoteSessionPaths).toHaveBeenCalledWith({
       sessionID: session.id,
       workspaceID: session.workspaceID,
-      expectedDirectory: "/E:/gitee/ezllm",
-      expectedPath: "/E:/gitee/ezllm",
-      directory: "E:/gitee/ezllm",
-      path: "E:/gitee/ezllm",
+      expectedDirectory: "/E:/work/ezllm",
+      expectedPath: "/E:/work/ezllm",
+      directory: "E:/work/ezllm",
+      path: "E:/work/ezllm",
       timeUpdated: session.time.updated,
     });
     expect(updateSession).not.toHaveBeenCalled();
-    expect(repaired).toMatchObject({ directory: "E:/gitee/ezllm", path: "E:/gitee/ezllm" });
+    expect(repaired).toMatchObject({ directory: "E:/work/ezllm", path: "E:/work/ezllm" });
   });
 });
